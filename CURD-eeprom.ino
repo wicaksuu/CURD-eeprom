@@ -76,10 +76,11 @@ static int stopCounter = 0;
 // const char* milestoneLabels[] = {"60ft","200ft","100m","200m","1/4mi","500m","1/2mi","1km","1mi"};
 // const int N_MILESTONE = sizeof(milestoneDist)/sizeof(milestoneDist[0]);
 
-// Update milestone configuration - only show 3 key milestones
-const float milestoneDist[]   = {91.44, 160.934, 200};  // 0-60mph≈91.44m@100kmh, 0-100kmh≈161m, 200m
-const char* milestoneLabels[] = {"0-60", "0-100", "200m"};
-const int N_MILESTONE = 3;  // Only 3 milestones now
+// Milestone configuration - track only the 200 m target; 0-60 and 0-100
+// are calculated from speed data separately.
+const float milestoneDist[]   = {200};     // single milestone distance in meters
+const char* milestoneLabels[] = {"200m"};  // display label for milestone
+const int N_MILESTONE = 1;                 // number of tracked milestones
 
 // Add filename display variable
 String currentSaveFilename = "";
@@ -495,7 +496,7 @@ const Zone ZONE_TIMER_PANEL  = {250, 25, 65, 80};
 const Zone ZONE_PROGRESS     = {5, 110, 310, 12};
 
 // Milestone grid (bottom section)
-const Zone ZONE_MILESTONE_GRID = {5, 128, 310, 107};
+const Zone ZONE_MILESTONE_GRID = {5, 128, 310, 70};  // compact milestone grid height
 
 // Colors for modern racing theme
 #define COLOR_BG         0x0841    // Dark blue
@@ -525,7 +526,7 @@ void createModernSprites() {
   sprPerfPanel.createSprite(ZONE_PERF_PANEL.w, ZONE_PERF_PANEL.h);
   sprTimerPanel.createSprite(ZONE_TIMER_PANEL.w, ZONE_TIMER_PANEL.h);
   sprProgress.createSprite(ZONE_PROGRESS.w, ZONE_PROGRESS.h);
-  sprMilestoneGrid.createSprite(ZONE_MILESTONE_GRID.w, ZONE_MILESTONE_GRID.h);
+  sprMilestoneGrid.createSprite(ZONE_MILESTONE_GRID.w, ZONE_MILESTONE_GRID.h); // ensure milestone grid sprite exists
 }
 
 void drawModernStaticElements() {
@@ -592,7 +593,8 @@ void drawModernHeader() {
   }
   
   // Center - GPS Accuracy, Satellites, and Altitude
-  int centerStart = 80;
+  const int centerBlockWidth = 120;                        // width for ACC/ALT/SAT group
+  int centerStart = (ZONE_HEADER.w - centerBlockWidth) / 2; // center the block
   sprHeader.setTextColor(COLOR_TEXT, COLOR_PANEL_BG);
   sprHeader.setCursor(centerStart, 2);
   sprHeader.print("ACC:");
@@ -613,34 +615,34 @@ void drawModernHeader() {
   sprHeader.print(altStr);
   
   // Right side - Signal bars and Hz
-  int rightStart = 220;
-  
+  // Align GPS metrics to the right edge
+  int barsX = ZONE_HEADER.w - 15;                           // leftmost x for signal bars
+
   // GPS Hz with color coding
   float hd = hdop.toFloat();
   bool goodGPS = (satellites >= 6 && hd > 0 && hd <= 2.5 && gpsHz >= 18.0f);
-  bool okGPS = (satellites >= 4 && hd > 0 && hd <= 4.0 && gpsHz >= 9.0f);
+  bool okGPS   = (satellites >= 4 && hd > 0 && hd <= 4.0 && gpsHz >= 9.0f);
   uint16_t gpsColor = goodGPS ? COLOR_SUCCESS : (okGPS ? COLOR_WARNING : COLOR_ERROR);
-  
+  String hzStr = (gpsHz > 0.1f) ? String(gpsHz, 0) + "Hz" : "--Hz"; // gps update rate
+  int hzX = barsX - sprHeader.textWidth(hzStr) - 3;         // right-align Hz text
   sprHeader.setTextColor(gpsColor, COLOR_PANEL_BG);
-  sprHeader.setCursor(rightStart, 2);
-  if (gpsHz > 0.1f) sprHeader.printf("%.0fHz", gpsHz);
-  else sprHeader.print("--Hz");
-  
+  sprHeader.setCursor(hzX, 2);
+  sprHeader.print(hzStr);
+
   // Satellite signal bars
-  int barsX = rightStart + 35;
   int bars = constrain(map(satellites, 0, 12, 0, 5), 0, 5);
   for (int i = 0; i < 5; i++) {
     uint16_t barColor = (i < bars) ? gpsColor : COLOR_DIM;
     int barHeight = 2 + i * 2;
     sprHeader.fillRect(barsX + i * 3, 16 - barHeight, 2, barHeight, barColor);
   }
-  
-  // Signal strength indicator
+
+  // Signal strength indicator text
+  String statusStr = (satellites >= 6) ? "GOOD" : (satellites >= 4 ? "OK" : "WEAK");
   sprHeader.setTextColor(COLOR_DIM, COLOR_PANEL_BG);
-  sprHeader.setCursor(rightStart, 10);
-  if (satellites >= 6) sprHeader.print("GOOD");
-  else if (satellites >= 4) sprHeader.print("OK");
-  else sprHeader.print("WEAK");
+  int statusX = barsX - sprHeader.textWidth(statusStr) - 3; // right-align status text
+  sprHeader.setCursor(statusX, 10);
+  sprHeader.print(statusStr);
   
   sprHeader.pushSprite(ZONE_HEADER.x, ZONE_HEADER.y);
 }
@@ -1106,6 +1108,7 @@ void setup() {
   
   resetSystem();
   drawModernStaticElements();
+  drawModernMilestoneGrid(); // render milestone grid on startup
 
   // Web
   registerWebRoutes();
